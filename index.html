@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>牛排的物理課：美味的障礙</title>
+    <!-- 載入 Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 載入 Lucide Icons (簡單的 SVG 圖示) -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- 載入 Chart.js (用於繪製溫度圖表) -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+    <!-- 載入 Chart.js 註釋外掛 (用於參考線標籤) -->
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+    
+    <style>
+        /* 使用 Inter 字體以獲得更好的視覺效果 */
+        :root { font-family: 'Inter', sans-serif; }
+        
+        /* 視覺元素的樣式 */
+        .steak-visual-container {
+            transition: all 0.3s ease-in-out;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+        }
+        
+        /* 自定義 Sizzling 氣泡動畫 */
+        @keyframes sizzle-pulse {
+            0% { transform: translateY(0) scale(1); opacity: 0.5; }
+            50% { transform: translateY(-30px) scale(1.2); opacity: 1; }
+            100% { transform: translateY(-60px) scale(0.5); opacity: 0; }
+        }
+        .sizzle-bubble {
+            animation: sizzle-pulse 1s infinite;
+            background-color: rgba(255, 255, 255, 0.7);
+        }
+
+        /* 隱藏 Chart.js tooltip 箭頭 */
+        .chartjs-tooltip-key { display: none; }
+        
+    </style>
+</head>
+
+<body class="min-h-screen bg-slate-950 text-slate-100 p-4 flex justify-center">
+
+    <div id="app-container" class="max-w-6xl w-full flex flex-col items-center">
+        
+        <header class="w-full text-center mb-8">
+            <h1 class="text-3xl md:text-4xl font-black text-white flex items-center justify-center gap-3 mb-2">
+                <i data-lucide="chef-hat" class="text-orange-500 w-10 h-10"></i>
+                牛排的物理課
+            </h1>
+            <p class="text-slate-400">
+                目標：突破 <span class="text-blue-400 font-bold border-b border-blue-400">100°C 汽化障礙</span>，
+                觸發 <span class="text-orange-400 font-bold border-b border-orange-400">140°C 梅納反應</span>
+            </p>
+        </header>
+
+        <div class="w-full grid grid-cols-1 lg:grid-cols-2 gap-8">
+            
+            <!-- LEFT PANEL: CONTROLS & VISUALS -->
+            <div class="flex flex-col gap-6">
+                
+                <!-- Method Selection -->
+                <div class="bg-slate-800 p-2 rounded-2xl border border-slate-700 flex shadow-lg">
+                   <button id="btn-boil" class="flex-1 py-4 rounded-xl font-bold flex flex-col items-center gap-1 transition-all duration-300 bg-blue-600 text-white shadow-md transform scale-105">
+                     <span class="flex items-center gap-2 text-lg"><i data-lucide="droplets" class="w-5 h-5"></i> 水煮模式</span>
+                     <span class="text-[10px] opacity-80 font-mono">Max: 100°C</span>
+                   </button>
+                   <button id="btn-sear" class="flex-1 py-4 rounded-xl font-bold flex flex-col items-center gap-1 transition-all duration-300 text-slate-400 hover:bg-slate-700">
+                     <span class="flex items-center gap-2 text-lg"><i data-lucide="utensils" class="w-5 h-5"></i> 香煎模式</span>
+                     <span class="text-[10px] opacity-80 font-mono">Target: 140°C+</span>
+                   </button>
+                </div>
+
+                <!-- Main Visualization Stage -->
+                <div class="bg-slate-900 rounded-3xl p-1 border-4 border-slate-800 shadow-2xl relative">
+                  <div class="bg-slate-800 rounded-[20px] p-6 relative overflow-hidden">
+                     
+                     <!-- Steak Visual Placeholder -->
+                     <div id="steak-visual" class="relative w-full h-64 flex flex-col items-center justify-end select-none overflow-hidden rounded-xl bg-slate-950/50 border border-slate-700">
+                        <!-- Content will be injected by JavaScript -->
+                     </div>
+                     
+                     <!-- Fire Animation -->
+                     <div id="fire-animation" class="mt-4 flex justify-center gap-2 h-12 items-end">
+                       <!-- Flames will be injected by JavaScript -->
+                     </div>
+
+                     <!-- Live Stats Overlay -->
+                     <div class="absolute top-4 left-4 flex flex-col gap-2">
+                       <div class="bg-black/60 backdrop-blur px-4 py-2 rounded-xl border border-slate-600 shadow-lg flex items-center gap-3">
+                          <i id="temp-icon" data-lucide="thermometer" class="text-blue-400 w-6 h-6"></i>
+                          <div>
+                            <div class="text-xs text-slate-400 font-bold uppercase">溫度</div>
+                            <div id="temp-display" class="text-2xl font-mono font-black text-white">20°C</div>
+                          </div>
+                       </div>
+                     </div>
+
+                     <!-- Moisture Stat (Only for Sear) -->
+                     <div id="moisture-stat-container" class="absolute top-4 right-4 hidden">
+                       <div class="bg-black/60 backdrop-blur px-4 py-2 rounded-xl border border-slate-600 shadow-lg text-right">
+                          <div class="text-xs text-slate-400 font-bold uppercase">表面水分</div>
+                          <div id="moisture-display" class="text-2xl font-mono font-black text-blue-400">100%</div>
+                       </div>
+                     </div>
+                  </div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="flex gap-4">
+                   <button 
+                     id="btn-run-pause"
+                     class="flex-1 py-4 rounded-xl font-black text-xl flex items-center justify-center gap-3 transition-transform active:scale-95 shadow-lg border-b-4 bg-blue-500 border-blue-700 hover:bg-blue-400 text-white"
+                   >
+                     <i id="run-pause-icon" data-lucide="play" fill="currentColor"></i>
+                     <span id="run-pause-text">開始加熱</span>
+                   </button>
+                   <button 
+                      id="btn-reset" 
+                      class="px-6 bg-slate-700 border-b-4 border-slate-900 rounded-xl hover:bg-slate-600 text-white transition-colors"
+                      title="重置"
+                   >
+                     <i data-lucide="rotate-ccw" class="w-6 h-6"></i>
+                   </button>
+                </div>
+              </div>
+
+              <!-- RIGHT PANEL: DATA & EXPLANATION -->
+              <div class="flex flex-col gap-6">
+                
+                <!-- Real-time Graph -->
+                <div class="bg-slate-800 rounded-3xl p-1 border border-slate-700 shadow-xl flex-1 min-h-[300px] flex flex-col">
+                   <div class="bg-slate-900/50 rounded-t-[20px] px-4 py-2 border-b border-slate-700 flex justify-between items-center">
+                     <span class="text-xs font-bold text-slate-400 flex items-center gap-2"><i data-lucide="zap" class="w-4 h-4"></i> 溫度變化曲線 (T-t Graph)</span>
+                     <span id="maillard-status" class="text-xs font-bold text-orange-400 hidden animate-pulse">🔥 梅納反應發生中!</span>
+                   </div>
+                   
+                   <div class="flex-1 p-2 relative">
+                     <canvas id="tempChart" class="w-full h-full"></canvas>
+                     <div id="evaporation-status" class="absolute bottom-4 right-4 bg-blue-900/80 text-blue-200 text-xs px-2 py-1 rounded border border-blue-500 animate-pulse hidden">
+                        💧 水分蒸發中 (吸熱)
+                     </div>
+                   </div>
+                </div>
+
+                <!-- Explanation Box -->
+                <div id="explanation-box" class="p-6 rounded-2xl border-l-4 transition-all duration-500 shadow-lg bg-blue-900/10 border-blue-500">
+                   <!-- Content will be injected by JavaScript -->
+                </div>
+
+              </div>
+        </div>
+    </div>
+    
+    <script>
+        // ----------------------------------------------------
+        // 物理常數與狀態
+        // ----------------------------------------------------
+        const BOILING_POINT = 100;
+        const MAILLARD_START = 140; 
+        const HEAT_INPUT = 0.8;
+        
+        let method = 'boil';
+        let isRunning = false;
+        let animationFrameId = null;
+
+        let physics = {
+            temp: 20,
+            surfaceMoisture: 100, // %
+            time: 0,
+        };
+
+        let chartData = [];
+        let tempChart;
+        
+        // ----------------------------------------------------
+        // DOM 元素參考
+        // ----------------------------------------------------
+        const dom = {
+            btnBoil: document.getElementById('btn-boil'),
+            btnSear: document.getElementById('btn-sear'),
+            btnRunPause: document.getElementById('btn-run-pause'),
+            btnReset: document.getElementById('btn-reset'),
+            runPauseIcon: document.getElementById('run-pause-icon'),
+            runPauseText: document.getElementById('run-pause-text'),
+            tempIcon: document.getElementById('temp-icon'),
+            tempDisplay: document.getElementById('temp-display'),
+            moistureContainer: document.getElementById('moisture-stat-container'),
+            moistureDisplay: document.getElementById('moisture-display'),
+            steakVisual: document.getElementById('steak-visual'),
+            maillardStatus: document.getElementById('maillard-status'),
+            evaporationStatus: document.getElementById('evaporation-status'),
+            explanationBox: document.getElementById('explanation-box'),
+            fireAnimation: document.getElementById('fire-animation'),
+        };
+
+        // ----------------------------------------------------
+        // 圖表初始化
+        // ----------------------------------------------------
+        function initializeChart() {
+            const ctx = document.getElementById('tempChart').getContext('2d');
+            const color = method === 'boil' ? '#60a5fa' : '#fb923c'; // Blue or Orange
+
+            tempChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: chartData.map(d => d.time.toFixed(1)),
+                    datasets: [{
+                        label: '溫度 (°C)',
+                        data: chartData.map(d => d.temp),
+                        borderColor: color,
+                        backgroundColor: (context) => {
+                            const chart = context.chart;
+                            const {ctx, chartArea} = chart;
+                            if (!chartArea) return;
+                            const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+                            gradient.addColorStop(0, `${color}80`); // 50% opacity
+                            gradient.addColorStop(1, `${color}00`); // 0% opacity
+                            return gradient;
+                        },
+                        fill: 'start',
+                        tension: 0.1,
+                        pointRadius: 0,
+                        borderWidth: 3,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: { display: false },
+                        y: { 
+                            min: 0, 
+                            max: 200, 
+                            ticks: { color: '#94a3b8', font: { size: 10 } },
+                            grid: { color: '#334155', drawBorder: false }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { 
+                            callbacks: {
+                                title: () => null,
+                                label: (context) => `${context.parsed.y.toFixed(1)}°C`,
+                            },
+                            bodyFont: { size: 14, weight: 'bold' },
+                            backgroundColor: '#0f172a',
+                            borderColor: '#334155',
+                            borderWidth: 1,
+                            cornerRadius: 8,
+                            titleAlign: 'center',
+                        },
+                        annotation: {
+                            annotations: {
+                                boilingPoint: {
+                                    type: 'line',
+                                    yMin: 100,
+                                    yMax: 100,
+                                    borderColor: '#3b82f6',
+                                    borderWidth: 2,
+                                    borderDash: [5, 5],
+                                    label: {
+                                        content: '100°C (汽化熱平臺)',
+                                        display: true,
+                                        position: 'start',
+                                        color: '#60a5fa',
+                                        backgroundColor: '#0f172a',
+                                        font: { size: 10, weight: 'bold' },
+                                        xAdjust: 10,
+                                        yAdjust: 10,
+                                        borderWidth: 1,
+                                        padding: 4,
+                                        borderRadius: 4,
+                                    }
+                                },
+                                maillardStart: {
+                                    type: 'line',
+                                    yMin: 140,
+                                    yMax: 140,
+                                    borderColor: '#f97316',
+                                    borderWidth: 2,
+                                    borderDash: [5, 5],
+                                    label: {
+                                        content: '140°C (梅納反應區)',
+                                        display: true,
+                                        position: 'start',
+                                        color: '#fb923c',
+                                        backgroundColor: '#0f172a',
+                                        font: { size: 10, weight: 'bold' },
+                                        xAdjust: 10,
+                                        yAdjust: 10,
+                                        borderWidth: 1,
+                                        padding: 4,
+                                        borderRadius: 4,
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        // ----------------------------------------------------
+        // 物理模擬引擎
+        // ----------------------------------------------------
+        function physicsLoop(timestamp) {
+            if (!isRunning) return;
+
+            physics.time += 0.1;
+            const p = physics;
+            const heatInput = HEAT_INPUT;
+
+            if (method === 'boil') {
+                // --- 水煮物理 ---
+                if (p.temp < BOILING_POINT) {
+                    p.temp += heatInput * 0.5;
+                } else {
+                    p.temp = BOILING_POINT; // 鎖定在 100°C
+                }
+            } else {
+                // --- 香煎物理 ---
+                if (p.temp < BOILING_POINT) {
+                    p.temp += heatInput * 0.8;
+                } else {
+                    // 達到 100°C: 汽化熱障礙
+                    if (p.surfaceMoisture > 0) {
+                        // 溫度平臺 (stalls around 100)
+                        p.temp = BOILING_POINT + (Math.random() * 2); 
+                        p.surfaceMoisture -= 1.0; // 快速乾燥
+                    } else {
+                        // 水分耗盡! 溫度飆升
+                        p.temp += heatInput * 1.5; 
+                    }
+                }
+            }
+
+            // 限制最高溫度
+            if (p.temp > 220) p.temp = 220;
+            if (p.surfaceMoisture < 0) p.surfaceMoisture = 0;
+
+            // 每 0.2 秒同步一次數據 (確保圖表不會過於密集)
+            if (Math.floor(p.time * 10) % 2 === 0) {
+                chartData.push({ 
+                    time: parseFloat(p.time.toFixed(1)), 
+                    temp: p.temp, 
+                    moisture: p.surfaceMoisture 
+                });
+                updateUI();
+                updateChart();
+            }
+
+            animationFrameId = requestAnimationFrame(physicsLoop);
+        }
+
+        function startStopSimulation() {
+            isRunning = !isRunning;
+            if (isRunning) {
+                dom.runPauseIcon.innerHTML = `<i data-lucide="pause" fill="currentColor" class="w-6 h-6"></i>`;
+                dom.runPauseText.textContent = '暫停實驗';
+                dom.btnRunPause.classList.replace('bg-blue-500', 'bg-slate-700');
+                dom.btnRunPause.classList.replace('border-blue-700', 'border-slate-900');
+                dom.btnRunPause.classList.replace('hover:bg-blue-400', 'hover:bg-slate-600');
+                dom.btnRunPause.classList.replace('bg-orange-500', 'bg-slate-700');
+                dom.btnRunPause.classList.replace('border-orange-700', 'border-slate-900');
+                dom.btnRunPause.classList.replace('hover:bg-orange-400', 'hover:bg-slate-600');
+                requestAnimationFrame(physicsLoop);
+            } else {
+                dom.runPauseIcon.innerHTML = `<i data-lucide="play" fill="currentColor" class="w-6 h-6"></i>`;
+                dom.runPauseText.textContent = '開始加熱';
+                updateRunPauseButtonColor(method);
+                if (animationFrameId) cancelAnimationFrame(animationFrameId);
+            }
+            // 重新渲染 Lucide 圖示
+            lucide.createIcons();
+        }
+        
+        // ----------------------------------------------------
+        // UI 更新與輔助函數
+        // ----------------------------------------------------
+        function updateSteakVisual() {
+            const temp = physics.temp;
+            const surfaceMoisture = physics.surfaceMoisture;
+            let color = '#ffb7b2'; // Raw Pink
+            let textureStyle = '';
+            let status = '生肉 (Raw)';
+            let statusColor = 'text-white';
+            let envContent = '';
+            let fireContent = '';
+
+            // 1. Determine Steak Color
+            if (method === 'boil') {
+                if (temp > 60) { color = '#d3c0b6'; status = '全熟 (灰)'; }
+                else if (temp > 40) { color = '#e0a899'; status = '半熟'; }
+                
+                // Boiling Environment
+                let bubbles = '';
+                if (temp > 90) {
+                    for(let i = 0; i < 8; i++) {
+                       bubbles += `<div class="absolute bottom-0 w-6 h-6 bg-white/30 rounded-full sizzle-bubble" 
+                           style="left: ${Math.random() * 80 + 10}%; animation-delay: ${Math.random()}s; animation-duration: ${0.5 + Math.random()}s;"></div>`;
+                    }
+                }
+                envContent = `
+                    <div class="absolute inset-0 bg-blue-500/20">
+                       <div class="absolute inset-0 flex justify-center overflow-hidden">${bubbles}</div>
+                       <div class="absolute top-3 right-3 text-xs font-bold bg-blue-600 text-white px-2 py-1 rounded shadow-sm z-20">水煮環境</div>
+                    </div>
+                `;
+            } else {
+                if (temp > 170) { color = '#2d1a10'; status = '焦黑 (Burnt)'; textureStyle = 'opacity-60 bg-black;'; statusColor = 'text-gray-400'; }
+                else if (temp > 135) { 
+                    color = '#8b4513'; status = '完美焦脆 (Maillard)'; 
+                    textureStyle = `opacity-40; background-image: radial-gradient(circle, transparent 20%, #3e2723 20%); background-size: 8px 8px;`; 
+                    statusColor = 'text-orange-200';
+                }
+                else if (temp > 60) { color = '#bc8f8f'; status = '熟了但沒焦脆'; }
+                
+                // Searing Environment
+                let smoke = '';
+                if (temp > 100) {
+                   const smokeClass = temp > 150 ? 'bg-gray-600/50 h-48' : 'bg-gray-400/30';
+                   smoke = `<div class="absolute top-10 left-0 w-full flex justify-center opacity-40 pointer-events-none">
+                              <div class="w-32 h-32 ${smokeClass} rounded-full blur-3xl animate-pulse"></div>
+                           </div>`;
+                }
+                envContent = `
+                    <div class="absolute inset-0">
+                       ${smoke}
+                       <div class="absolute bottom-0 w-full h-8 bg-slate-800 border-t border-slate-700 shadow-lg"></div>
+                       <div class="absolute top-3 right-3 text-xs font-bold bg-orange-600 text-white px-2 py-1 rounded shadow-sm z-20">高溫煎鍋</div>
+                    </div>
+                `;
+            }
+            
+            // 2. Fire Animation Content
+            for(let i = 0; i < 5; i++) {
+               fireContent += `<i data-lucide="flame" class="text-orange-500 w-[${24 + Math.random()*10}px] h-[${24 + Math.random()*10}px] transition-opacity duration-300 ${isRunning ? 'animate-pulse opacity-100' : 'opacity-20'}"></i>`;
+            }
+            dom.fireAnimation.innerHTML = fireContent;
+            
+            // 3. Steak Sizzling Visual (Sizzling)
+            let sizzleContent = '';
+            if (surfaceMoisture > 0 && method === 'sear' && temp > 90) {
+                sizzleContent = `
+                   <div class="absolute -top-8 w-full flex justify-center">
+                      <div class="flex gap-1">
+                         <div class="w-1 h-6 bg-white/50 rounded-full sizzle-bubble" style="animation-delay: 0s;"></div>
+                         <div class="w-1 h-6 bg-white/50 rounded-full sizzle-bubble" style="animation-delay: 0.2s;"></div>
+                         <div class="w-1 h-6 bg-white/50 rounded-full sizzle-bubble" style="animation-delay: 0.4s;"></div>
+                      </div>
+                   </div>
+                `;
+            }
+
+            // 4. Combine all into the final visual HTML
+            dom.steakVisual.innerHTML = `
+                ${envContent}
+                <div 
+                    class="relative w-48 h-20 rounded-2xl transition-all duration-300 border-b-8 border-black/20 shadow-2xl z-10 flex items-center justify-center mb-6 overflow-hidden transform hover:scale-105"
+                    style="background-color: ${color};"
+                >
+                    <!-- Crust Texture Overlay -->
+                    <div class="absolute inset-0" style="${textureStyle}"></div>
+                    ${sizzleContent}
+                    <span class="font-black text-lg text-shadow-md z-10 ${statusColor} drop-shadow-md px-2 py-1 rounded bg-black/20">${status}</span>
+                </div>
+            `;
+            // 重新渲染 Lucide 圖示
+            lucide.createIcons();
+        }
+
+        function updateUI() {
+            const temp = physics.temp;
+            const moisture = physics.surfaceMoisture;
+            const isMaillard = temp >= MAILLARD_START;
+            const isBoiling = temp >= 100 && method === 'sear' && moisture > 0;
+
+            // Temp Display
+            dom.tempDisplay.textContent = `${temp.toFixed(0)}°C`;
+            if (isMaillard) {
+                dom.tempDisplay.classList.add('text-orange-400');
+                dom.tempDisplay.classList.remove('text-white');
+            } else {
+                dom.tempDisplay.classList.remove('text-orange-400');
+                dom.tempDisplay.classList.add('text-white');
+            }
+            
+            // Temp Icon Color
+            if (temp >= 100) {
+                dom.tempIcon.setAttribute('class', 'text-red-500 w-6 h-6');
+            } else {
+                dom.tempIcon.setAttribute('class', 'text-blue-400 w-6 h-6');
+            }
+
+            // Maillard Status
+            if (isMaillard) {
+                dom.maillardStatus.classList.remove('hidden');
+            } else {
+                dom.maillardStatus.classList.add('hidden');
+            }
+
+            // Sear Specific UI (Moisture)
+            if (method === 'sear') {
+                dom.moistureContainer.classList.remove('hidden');
+                dom.moistureDisplay.textContent = moisture > 0 ? `${moisture.toFixed(0)}%` : 'DRY!';
+                if (moisture === 0) {
+                    dom.moistureDisplay.classList.add('text-red-500');
+                    dom.moistureDisplay.classList.remove('text-blue-400');
+                } else {
+                    dom.moistureDisplay.classList.remove('text-red-500');
+                    dom.moistureDisplay.classList.add('text-blue-400');
+                }
+                
+                // Evaporation Status
+                if (isBoiling) {
+                    dom.evaporationStatus.classList.remove('hidden');
+                } else {
+                    dom.evaporationStatus.classList.add('hidden');
+                }
+            } else {
+                dom.moistureContainer.classList.add('hidden');
+                dom.evaporationStatus.classList.add('hidden');
+            }
+            
+            updateSteakVisual();
+            updateExplanationBox();
+        }
+
+        function updateChart() {
+             // 只保留最後 50 個數據點以確保性能
+            const MAX_DATA_POINTS = 50;
+            if (chartData.length > MAX_DATA_POINTS) {
+                chartData = chartData.slice(chartData.length - MAX_DATA_POINTS);
+            }
+            
+            const color = method === 'boil' ? '#60a5fa' : '#fb923c';
+
+            tempChart.data.labels = chartData.map(d => d.time.toFixed(1));
+            tempChart.data.datasets[0].data = chartData.map(d => d.temp);
+            tempChart.data.datasets[0].borderColor = color;
+            tempChart.update();
+        }
+
+        function updateExplanationBox() {
+            let content, title;
+            let borderClass = method === 'boil' ? 'border-blue-500' : 'border-orange-500';
+            let bgClass = method === 'boil' ? 'bg-blue-900/10' : 'bg-orange-900/10';
+            let titleClass = method === 'boil' ? 'text-blue-400' : 'text-orange-400';
+
+            if (method === 'boil') {
+                title = `<i data-lucide="droplets" class="w-6 h-6"></i> 水煮的物理困境`;
+                content = `水的沸點限制在 <strong>100°C</strong>。輸入的熱量全被<span class="text-white font-bold">汽化熱</span>吸收用於產生蒸汽，導致溫度無法繼續上升。沒有高溫，就無法觸發讓肉變香的梅納反應，所以肉看起來是灰白色的。`;
+            } else {
+                title = `<i data-lucide="zap" class="w-6 h-6"></i> 香煎的美味原理`;
+                content = `牛排表面一開始也會卡在 100°C，直到<span class="text-white font-bold">表面水分完全蒸發</span>。一旦乾燥，不再有汽化熱帶走能量，溫度會瞬間飆升突破 <strong>140°C</strong>，梅納反應啟動，產生迷人的褐色外皮與焦香！`;
+            }
+
+            dom.explanationBox.setAttribute('class', `p-6 rounded-2xl border-l-4 transition-all duration-500 shadow-lg ${bgClass} ${borderClass}`);
+            dom.explanationBox.innerHTML = `
+                <h3 class="font-black text-lg mb-2 flex items-center gap-2 ${titleClass}">
+                    ${title}
+                </h3>
+                <p class="text-sm text-slate-300 leading-relaxed">${content}</p>
+            `;
+            // 重新渲染 Lucide 圖示
+            lucide.createIcons();
+        }
+        
+        function updateRunPauseButtonColor(newMethod) {
+            const btn = dom.btnRunPause;
+            // Reset classes first
+            btn.classList.remove('bg-blue-500', 'border-blue-700', 'hover:bg-blue-400', 'bg-orange-500', 'border-orange-700', 'hover:bg-orange-400', 'bg-slate-700', 'border-slate-900', 'hover:bg-slate-600');
+
+            if (isRunning) {
+                 btn.classList.add('bg-slate-700', 'border-slate-900', 'hover:bg-slate-600');
+            } else if (newMethod === 'boil') {
+                btn.classList.add('bg-blue-500', 'border-blue-700', 'hover:bg-blue-400');
+            } else { // sear
+                btn.classList.add('bg-orange-500', 'border-orange-700', 'hover:bg-orange-400');
+            }
+        }
+
+        // ----------------------------------------------------
+        // 事件處理器
+        // ----------------------------------------------------
+        function resetSimulation(newMethod) {
+            isRunning = false;
+            method = newMethod;
+            physics = { temp: 20, surfaceMoisture: 100, time: 0 };
+            chartData = [];
+            if (animationFrameId) cancelAnimationFrame(animationFrameId);
+
+            // UI updates
+            dom.btnBoil.classList.remove('bg-blue-600', 'text-white', 'shadow-md', 'transform', 'scale-105', 'text-slate-400', 'hover:bg-slate-700');
+            dom.btnSear.classList.remove('bg-orange-600', 'text-white', 'shadow-md', 'transform', 'scale-105', 'text-slate-400', 'hover:bg-slate-700');
+
+            if (newMethod === 'boil') {
+                dom.btnBoil.classList.add('bg-blue-600', 'text-white', 'shadow-md', 'transform', 'scale-105');
+                dom.btnSear.classList.add('text-slate-400', 'hover:bg-slate-700');
+            } else {
+                dom.btnSear.classList.add('bg-orange-600', 'text-white', 'shadow-md', 'transform', 'scale-105');
+                dom.btnBoil.classList.add('text-slate-400', 'hover:bg-slate-700');
+            }
+
+            // Chart reset
+            if (tempChart) tempChart.destroy();
+            initializeChart();
+
+            // Run/Pause button reset
+            dom.runPauseIcon.innerHTML = `<i data-lucide="play" fill="currentColor" class="w-6 h-6"></i>`;
+            dom.runPauseText.textContent = '開始加熱';
+            updateRunPauseButtonColor(newMethod);
+            
+            // Force UI update
+            updateUI();
+        }
+
+        // ----------------------------------------------------
+        // 啟動應用程式
+        // ----------------------------------------------------
+        window.onload = function() {
+            // 初始化圖表
+            initializeChart();
+            
+            // 綁定事件
+            dom.btnBoil.addEventListener('click', () => resetSimulation('boil'));
+            dom.btnSear.addEventListener('click', () => resetSimulation('sear'));
+            dom.btnRunPause.addEventListener('click', startStopSimulation);
+            dom.btnReset.addEventListener('click', () => resetSimulation(method));
+            
+            // 首次渲染 UI (預設為水煮模式)
+            resetSimulation('boil');
+            // 重新渲染 Lucide 圖示
+            lucide.createIcons();
+        };
+
+    </script>
+</body>
+</html>
